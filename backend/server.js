@@ -6,6 +6,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoute.js";
 import { protect } from "./middleware/authMiddleware.js";
 import medicalHistoryRoutes from "./routes/medical.history.route.js";
+import appointmentRoutes from "./routes/appointment.route.js";
 
 
 dotenv.config();
@@ -24,6 +25,7 @@ app.use(morgan())
 
 app.use("/api/auth", authRoutes);
 app.use("/api/auth/medical-history", medicalHistoryRoutes);
+app.use("/api/auth/appointments", appointmentRoutes);
 
 
 
