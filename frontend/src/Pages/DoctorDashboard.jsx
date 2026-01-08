@@ -18,7 +18,19 @@ const DoctorDashboard = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [prescriptionAppointmentId, setPrescriptionAppointmentId] = useState(null);
-  const [prescriptionData, setPrescriptionData] = useState({ diagnosis: '', prescription: '', notes: '' });
+  const [prescriptionData, setPrescriptionData] = useState({ 
+    diagnosis: {
+      primaryDiagnosis: '',
+      secondaryDiagnosis: '',
+      icdCode: '',
+      severity: 'mild'
+    },
+    prescription: {
+      medications: [{ name: '', dosage: '', frequency: '', duration: '', instructions: '' }]
+    },
+    notes: ''
+  });
+  const [prescriptionStep, setPrescriptionStep] = useState(1);
   const [showViewPrescriptionModal, setShowViewPrescriptionModal] = useState(false);
   const [viewPrescriptionData, setViewPrescriptionData] = useState(null);
 
@@ -119,13 +131,18 @@ const DoctorDashboard = () => {
   };
 
   const submitPrescription = async () => {
-    if (!prescriptionData.diagnosis || !prescriptionData.prescription) {
-      alert('Please fill diagnosis and prescription fields');
+    if (!prescriptionData.diagnosis.primaryDiagnosis || prescriptionData.prescription.medications.length === 0 || !prescriptionData.prescription.medications[0].name) {
+      alert('Please fill primary diagnosis and at least one medication');
       return;
     }
 
     try {
       const token = localStorage.getItem('token');
+      const diagnosisText = `${prescriptionData.diagnosis.primaryDiagnosis}${prescriptionData.diagnosis.secondaryDiagnosis ? '; ' + prescriptionData.diagnosis.secondaryDiagnosis : ''}${prescriptionData.diagnosis.icdCode ? ' (ICD: ' + prescriptionData.diagnosis.icdCode + ')' : ''} - Severity: ${prescriptionData.diagnosis.severity}`;
+      const prescriptionText = prescriptionData.prescription.medications.map(med => 
+        `${med.name} ${med.dosage} - ${med.frequency} for ${med.duration}${med.instructions ? ' (' + med.instructions + ')' : ''}`
+      ).join('; ');
+      
       const response = await fetch(`http://localhost:5000/api/auth/appointments/doctor/${prescriptionAppointmentId}`, {
         method: 'PUT',
         headers: {
@@ -134,20 +151,81 @@ const DoctorDashboard = () => {
         },
         body: JSON.stringify({ 
           status: 'completed',
-          diagnosis: prescriptionData.diagnosis,
-          prescription: prescriptionData.prescription,
+          diagnosis: diagnosisText,
+          prescription: prescriptionText,
           notes: prescriptionData.notes
         })
       });
 
       if (response.ok) {
         setShowPrescriptionModal(false);
-        setPrescriptionData({ diagnosis: '', prescription: '', notes: '' });
+        setPrescriptionData({ 
+          diagnosis: {
+            primaryDiagnosis: '',
+            secondaryDiagnosis: '',
+            icdCode: '',
+            severity: 'mild'
+          },
+          prescription: {
+            medications: [{ name: '', dosage: '', frequency: '', duration: '', instructions: '' }]
+          },
+          notes: ''
+        });
+        setPrescriptionStep(1);
         fetchAllAppointments();
       }
     } catch (err) {
       console.error('Error completing appointment:', err);
     }
+  };
+
+  const addMedication = () => {
+    setPrescriptionData({
+      ...prescriptionData,
+      prescription: {
+        ...prescriptionData.prescription,
+        medications: [...prescriptionData.prescription.medications, { name: '', dosage: '', frequency: '', duration: '', instructions: '' }]
+      }
+    });
+  };
+
+  const removeMedication = (index) => {
+    const newMedications = prescriptionData.prescription.medications.filter((_, i) => i !== index);
+    setPrescriptionData({
+      ...prescriptionData,
+      prescription: {
+        ...prescriptionData.prescription,
+        medications: newMedications
+      }
+    });
+  };
+
+  const updateMedication = (index, field, value) => {
+    const newMedications = [...prescriptionData.prescription.medications];
+    newMedications[index][field] = value;
+    setPrescriptionData({
+      ...prescriptionData,
+      prescription: {
+        ...prescriptionData.prescription,
+        medications: newMedications
+      }
+    });
+  };
+
+  const nextStep = () => {
+    if (prescriptionStep === 1 && !prescriptionData.diagnosis.primaryDiagnosis) {
+      alert('Please enter primary diagnosis');
+      return;
+    }
+    if (prescriptionStep === 2 && (!prescriptionData.prescription.medications[0].name || !prescriptionData.prescription.medications[0].dosage)) {
+      alert('Please fill medication name and dosage');
+      return;
+    }
+    setPrescriptionStep(prescriptionStep + 1);
+  };
+
+  const prevStep = () => {
+    setPrescriptionStep(prescriptionStep - 1);
   };
 
   const handleViewHistory = async (patientId) => {
@@ -798,60 +876,290 @@ const DoctorDashboard = () => {
           </div>
         )}
 
-        {/* Prescription Modal */}
+        {/* Multi-Step Prescription Modal */}
         {showPrescriptionModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-              <h3 className="text-xl font-bold mb-4" style={{ color: '#059669' }}>Complete Appointment</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Diagnosis *</label>
-                  <textarea
-                    value={prescriptionData.diagnosis}
-                    onChange={(e) => setPrescriptionData({...prescriptionData, diagnosis: e.target.value})}
-                    placeholder="Enter diagnosis..."
-                    rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  ></textarea>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Prescription *</label>
-                  <textarea
-                    value={prescriptionData.prescription}
-                    onChange={(e) => setPrescriptionData({...prescriptionData, prescription: e.target.value})}
-                    placeholder="Enter prescription and medications..."
-                    rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  ></textarea>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Additional Notes</label>
-                  <textarea
-                    value={prescriptionData.notes}
-                    onChange={(e) => setPrescriptionData({...prescriptionData, notes: e.target.value})}
-                    placeholder="Any additional notes..."
-                    rows="2"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  ></textarea>
-                </div>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold" style={{ color: '#059669' }}>Complete Appointment</h3>
+                <div className="text-sm text-gray-500">Step {prescriptionStep} of 3</div>
               </div>
               
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+                <div 
+                  className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                  style={{ width: `${(prescriptionStep / 3) * 100}%` }}
+                ></div>
+              </div>
+
+              {/* Step 1: Diagnosis */}
+              {prescriptionStep === 1 && (
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4">Diagnosis Information</h4>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Primary Diagnosis *</label>
+                    <select
+                      value={prescriptionData.diagnosis.primaryDiagnosis}
+                      onChange={(e) => setPrescriptionData({
+                        ...prescriptionData,
+                        diagnosis: { ...prescriptionData.diagnosis, primaryDiagnosis: e.target.value }
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="">Select primary diagnosis</option>
+                      <option value="Upper Respiratory Tract Infection">Upper Respiratory Tract Infection</option>
+                      <option value="Hypertension">Hypertension</option>
+                      <option value="Type 2 Diabetes Mellitus">Type 2 Diabetes Mellitus</option>
+                      <option value="Gastroenteritis">Gastroenteritis</option>
+                      <option value="Migraine">Migraine</option>
+                      <option value="Anxiety Disorder">Anxiety Disorder</option>
+                      <option value="Allergic Rhinitis">Allergic Rhinitis</option>
+                      <option value="Bronchitis">Bronchitis</option>
+                      <option value="Urinary Tract Infection">Urinary Tract Infection</option>
+                      <option value="Musculoskeletal Pain">Musculoskeletal Pain</option>
+                      <option value="Dermatitis">Dermatitis</option>
+                      <option value="Other">Other (specify below)</option>
+                    </select>
+                  </div>
+                  
+                  {prescriptionData.diagnosis.primaryDiagnosis === 'Other' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Specify Primary Diagnosis</label>
+                      <input
+                        type="text"
+                        placeholder="Enter specific diagnosis..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                        onChange={(e) => setPrescriptionData({
+                          ...prescriptionData,
+                          diagnosis: { ...prescriptionData.diagnosis, primaryDiagnosis: e.target.value }
+                        })}
+                      />
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Secondary Diagnosis (Optional)</label>
+                    <input
+                      type="text"
+                      value={prescriptionData.diagnosis.secondaryDiagnosis}
+                      onChange={(e) => setPrescriptionData({
+                        ...prescriptionData,
+                        diagnosis: { ...prescriptionData.diagnosis, secondaryDiagnosis: e.target.value }
+                      })}
+                      placeholder="Enter secondary diagnosis if any..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">ICD Code (Optional)</label>
+                      <input
+                        type="text"
+                        value={prescriptionData.diagnosis.icdCode}
+                        onChange={(e) => setPrescriptionData({
+                          ...prescriptionData,
+                          diagnosis: { ...prescriptionData.diagnosis, icdCode: e.target.value }
+                        })}
+                        placeholder="e.g., J06.9"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Severity</label>
+                      <select
+                        value={prescriptionData.diagnosis.severity}
+                        onChange={(e) => setPrescriptionData({
+                          ...prescriptionData,
+                          diagnosis: { ...prescriptionData.diagnosis, severity: e.target.value }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="mild">Mild</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="severe">Severe</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Prescription */}
+              {prescriptionStep === 2 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-lg font-semibold text-gray-800">Prescription Details</h4>
+                    <button
+                      onClick={addMedication}
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                    >
+                      + Add Medication
+                    </button>
+                  </div>
+                  
+                  {prescriptionData.prescription.medications.map((medication, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h5 className="font-medium text-gray-700">Medication {index + 1}</h5>
+                        {prescriptionData.prescription.medications.length > 1 && (
+                          <button
+                            onClick={() => removeMedication(index)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
+                          <input
+                            type="text"
+                            value={medication.name}
+                            onChange={(e) => updateMedication(index, 'name', e.target.value)}
+                            placeholder="e.g., Paracetamol"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Dosage *</label>
+                          <input
+                            type="text"
+                            value={medication.dosage}
+                            onChange={(e) => updateMedication(index, 'dosage', e.target.value)}
+                            placeholder="e.g., 500mg"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Frequency *</label>
+                          <select
+                            value={medication.frequency}
+                            onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          >
+                            <option value="">Select frequency</option>
+                            <option value="Once daily">Once daily</option>
+                            <option value="Twice daily">Twice daily</option>
+                            <option value="Three times daily">Three times daily</option>
+                            <option value="Four times daily">Four times daily</option>
+                            <option value="Every 4 hours">Every 4 hours</option>
+                            <option value="Every 6 hours">Every 6 hours</option>
+                            <option value="Every 8 hours">Every 8 hours</option>
+                            <option value="As needed">As needed</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Duration *</label>
+                          <select
+                            value={medication.duration}
+                            onChange={(e) => updateMedication(index, 'duration', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          >
+                            <option value="">Select duration</option>
+                            <option value="3 days">3 days</option>
+                            <option value="5 days">5 days</option>
+                            <option value="7 days">7 days</option>
+                            <option value="10 days">10 days</option>
+                            <option value="14 days">14 days</option>
+                            <option value="1 month">1 month</option>
+                            <option value="3 months">3 months</option>
+                            <option value="6 months">6 months</option>
+                            <option value="Ongoing">Ongoing</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Special Instructions</label>
+                        <input
+                          type="text"
+                          value={medication.instructions}
+                          onChange={(e) => updateMedication(index, 'instructions', e.target.value)}
+                          placeholder="e.g., Take with food, Before meals"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Step 3: Additional Notes */}
+              {prescriptionStep === 3 && (
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4">Additional Notes</h4>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Follow-up Instructions</label>
+                    <textarea
+                      value={prescriptionData.notes}
+                      onChange={(e) => setPrescriptionData({...prescriptionData, notes: e.target.value})}
+                      placeholder="Enter any follow-up instructions, lifestyle recommendations, or additional notes..."
+                      rows="4"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    ></textarea>
+                  </div>
+                  
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h5 className="font-medium text-gray-700 mb-2">Summary:</h5>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Diagnosis:</strong> {prescriptionData.diagnosis.primaryDiagnosis}
+                      {prescriptionData.diagnosis.secondaryDiagnosis && `, ${prescriptionData.diagnosis.secondaryDiagnosis}`}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      <strong>Medications:</strong> {prescriptionData.prescription.medications.filter(med => med.name).length} prescribed
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Navigation Buttons */}
               <div className="flex gap-3 mt-6">
                 <button
-                  onClick={() => setShowPrescriptionModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  onClick={() => {
+                    setShowPrescriptionModal(false);
+                    setPrescriptionStep(1);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={submitPrescription}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Complete
-                </button>
+                
+                {prescriptionStep > 1 && (
+                  <button
+                    onClick={prevStep}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Previous
+                  </button>
+                )}
+                
+                {prescriptionStep < 3 ? (
+                  <button
+                    onClick={nextStep}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    onClick={submitPrescription}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Complete Appointment
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -860,34 +1168,149 @@ const DoctorDashboard = () => {
         {/* View Prescription Modal */}
         {showViewPrescriptionModal && viewPrescriptionData && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-bold mb-4" style={{ color: '#059669' }}>Prescription Details</h3>
               
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Patient</label>
-                  <p className="text-gray-900 bg-gray-50 p-2 rounded">{viewPrescriptionData.patient?.name || 'N/A'}</p>
+              <div className="space-y-6">
+                {/* Patient Info */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Patient Name</label>
+                      <p className="text-gray-900">{viewPrescriptionData.patient?.name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+                      <p className="text-gray-900">{new Date(viewPrescriptionData.date.split('/').reverse().join('-')).toLocaleDateString('en-GB')}</p>
+                    </div>
+                  </div>
                 </div>
                 
+                {/* Diagnosis Section */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
-                  <p className="text-gray-900 bg-gray-50 p-2 rounded">{new Date(viewPrescriptionData.date.split('/').reverse().join('-')).toLocaleDateString('en-GB')}</p>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Diagnosis Information</h4>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="space-y-2">
+                      {(() => {
+                        const diagnosisText = viewPrescriptionData.diagnosis || '';
+                        const parts = diagnosisText.split(' - Severity: ');
+                        const mainDiagnosis = parts[0] || '';
+                        const severity = parts[1] || 'Not specified';
+                        
+                        // Extract ICD code if present
+                        const icdMatch = mainDiagnosis.match(/\(ICD: ([^)]+)\)/);
+                        const icdCode = icdMatch ? icdMatch[1] : '';
+                        const diagnosisWithoutICD = mainDiagnosis.replace(/\s*\(ICD: [^)]+\)/, '');
+                        
+                        // Split primary and secondary diagnosis
+                        const diagnosisParts = diagnosisWithoutICD.split('; ');
+                        const primaryDiagnosis = diagnosisParts[0] || '';
+                        const secondaryDiagnosis = diagnosisParts[1] || '';
+                        
+                        return (
+                          <>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm font-medium text-green-800">Primary Diagnosis:</p>
+                                <p className="text-green-700">{primaryDiagnosis}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-green-800">Severity:</p>
+                                <p className="text-green-700 capitalize">{severity}</p>
+                              </div>
+                            </div>
+                            {secondaryDiagnosis && (
+                              <div>
+                                <p className="text-sm font-medium text-green-800">Secondary Diagnosis:</p>
+                                <p className="text-green-700">{secondaryDiagnosis}</p>
+                              </div>
+                            )}
+                            {icdCode && (
+                              <div>
+                                <p className="text-sm font-medium text-green-800">ICD Code:</p>
+                                <p className="text-green-700">{icdCode}</p>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
                 
+                {/* Prescription Section */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Diagnosis</label>
-                  <p className="text-gray-900 bg-green-50 p-3 rounded">{viewPrescriptionData.diagnosis || 'No diagnosis recorded'}</p>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Prescribed Medications</h4>
+                  <div className="space-y-3">
+                    {(() => {
+                      const prescriptionText = viewPrescriptionData.prescription || '';
+                      const medications = prescriptionText.split('; ').filter(med => med.trim());
+                      
+                      return medications.length > 0 ? medications.map((medication, index) => {
+                        // Parse medication string: "Name Dosage - Frequency for Duration (Instructions)"
+                        const parts = medication.split(' - ');
+                        const nameDosage = parts[0] || '';
+                        const rest = parts[1] || '';
+                        
+                        const forIndex = rest.indexOf(' for ');
+                        const frequency = forIndex > -1 ? rest.substring(0, forIndex) : rest;
+                        const durationAndInstructions = forIndex > -1 ? rest.substring(forIndex + 5) : '';
+                        
+                        const instructionsMatch = durationAndInstructions.match(/^([^(]+)\s*\(([^)]+)\)$/);
+                        const duration = instructionsMatch ? instructionsMatch[1].trim() : durationAndInstructions;
+                        const instructions = instructionsMatch ? instructionsMatch[2] : '';
+                        
+                        // Split name and dosage
+                        const nameWords = nameDosage.split(' ');
+                        const name = nameWords.slice(0, -1).join(' ') || nameDosage;
+                        const dosage = nameWords[nameWords.length - 1] || '';
+                        
+                        return (
+                          <div key={index} className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <div className="grid grid-cols-2 gap-4 mb-2">
+                              <div>
+                                <p className="text-sm font-medium text-blue-800">Medicine:</p>
+                                <p className="text-blue-700 font-semibold">{name}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-blue-800">Dosage:</p>
+                                <p className="text-blue-700">{dosage}</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm font-medium text-blue-800">Frequency:</p>
+                                <p className="text-blue-700">{frequency}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-blue-800">Duration:</p>
+                                <p className="text-blue-700">{duration}</p>
+                              </div>
+                            </div>
+                            {instructions && (
+                              <div className="mt-2">
+                                <p className="text-sm font-medium text-blue-800">Instructions:</p>
+                                <p className="text-blue-700 italic">{instructions}</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }) : (
+                        <div className="bg-gray-50 p-4 rounded-lg text-center">
+                          <p className="text-gray-600">No medications prescribed</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Prescription</label>
-                  <p className="text-gray-900 bg-blue-50 p-3 rounded">{viewPrescriptionData.prescription || 'No prescription recorded'}</p>
-                </div>
-                
+                {/* Additional Notes */}
                 {viewPrescriptionData.notes && (
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Additional Notes</label>
-                    <p className="text-gray-900 bg-yellow-50 p-3 rounded">{viewPrescriptionData.notes}</p>
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">Follow-up Instructions</h4>
+                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                      <p className="text-yellow-800">{viewPrescriptionData.notes}</p>
+                    </div>
                   </div>
                 )}
               </div>
